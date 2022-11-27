@@ -1,83 +1,77 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "Differentiator.hpp"
 #include "Syntax_analyzer.hpp"
 
-int GetStarted(const char *str)
+void GetTokens();
+
+Node *GetStarted(const char *str)
 {   
-    int val = GetSumSubExpression(&str);
+    Node *node = GetSumSubExpression(&str);
     if (*str != '\0')
     {
         printf("Syntax error in symbol %c. Expected: '\\0'\n", *str);
         fflush(stdout);
         abort();
     }
-    return val;
+    return node;
 }
 
-int GetSumSubExpression(const char **str)
+Node *GetSumSubExpression(const char **str)
 {
-    int val = GetMulDivExpression(str);
+    Node *node = GetMulDivExpression(str);
 
     while (**str == '+' || **str == '-')
     {
         char op = **str;
         (*str)++;
 
-        int second_val = GetMulDivExpression(str);
+        Node *second_node = GetMulDivExpression(str);
 
         if (op == '+')
         {
-            val += second_val;
+            node = Add(node, second_node);
         }
         else
         {
-            val -= second_val;
+            node = Sub(node, second_node);
         }
     }
-    return val;
+    return node;
 }
 
-int GetMulDivExpression(const char **str)
+Node *GetMulDivExpression(const char **str)
 {
-    int val = GetBrackets(str);
+    Node *node = GetBrackets(str);
 
     while (**str == '*' || **str == '/')
     {
         char op = **str;
         (*str)++;
 
-        int second_val = GetBrackets(str);
+        Node *second_node = GetBrackets(str);
 
         if (op == '*')
         {
-            val *= second_val;
+            node = Mul(node, second_node);
         }
         else
         {
-            if (second_val != 0)
-            {
-                val /= second_val;
-            }
-            else
-            {
-                printf("Calculate error. Division by zero");
-                fflush(stdout);
-                abort();
-            }
+            node = Div(node, second_node);
         }
     }
-    return val;
+    return node;
 
 }
 
-int GetBrackets(const char **str)
+Node *GetBrackets(const char **str)
 {
-    int val = 0;
+    Node *node = nullptr;
     if (**str == '(')
     {
         (*str)++;
-        val = GetSumSubExpression(str);
+        node = GetSumSubExpression(str);
         if (**str != ')')
         {
             printf("Syntax error in symbol %c. Expexted: ')'\n", **str);
@@ -86,14 +80,25 @@ int GetBrackets(const char **str)
         }
         (*str)++;
     }
-    else
+    else if ('a' <= **str && **str <= 'z')
     {
-        val = GetNumber(str);
+        node = GetVariable(str);
     }
-    return val;
+    else 
+    {
+        node = GetNumber(str);
+    }
+    return node;
 }
 
-int GetNumber(const char **str)
+Node *GetVariable(const char **str)
+{
+    char var = **str;
+    (*str)++;
+    return CreateVar(var);
+}
+
+Node *GetNumber(const char **str)
 {
     int val = 0;
     const char *strOld = *str;
@@ -110,5 +115,5 @@ int GetNumber(const char **str)
         fflush(stdout);
         abort();
     }
-    return val;
+    return CreateNum(val);
 }

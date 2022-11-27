@@ -1,14 +1,18 @@
 #ifndef SYNTAX_ANALYZER_HPP
 #define SYNTAX_ANALYZER_HPP
 
-int GetStarted(const char *line);
+#include "Tree.hpp"
 
-int GetSumSubExpression(const char **str);
+Node *GetStarted(const char *line);
 
-int GetMulDivExpression(const char **str);
+Node *GetSumSubExpression(const char **str);
 
-int GetBrackets(const char **str);
+Node *GetMulDivExpression(const char **str);
 
-int GetNumber(const char **str);
+Node *GetBrackets(const char **str);
+
+Node *GetVariable(const char **str);
+
+Node *GetNumber(const char **str);
 
 #endif //SYNTAX_ANALYZER_HPP
