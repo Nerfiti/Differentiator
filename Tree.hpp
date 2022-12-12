@@ -74,8 +74,8 @@ void  nodeDtor   (Node *node);
 
 void treePrint     (FILE *stream,         const Node *node, bool needBrackets = false);
 void treePrint     (const char *filename, const Node *node, bool needBrackets = false);
-void treeLatex     (const Node *node, FILE *out);
-void treeLatex     (const Node *node, const char *filename = OUT_TEX_FILE);
+void treeLatex     (const Node *node, FILE *out, const char *prefix = "f(x) = ", bool withPhrases = false);
+void treeLatex     (const Node *node, const char *filename = OUT_TEX_FILE, const char *prefix = "f(x) = ", bool withPhrases = false);
 void treeGraphDump (const Node *node);
 
 FILE *initLatex  (const char *filename = OUT_TEX_FILE);

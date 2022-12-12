@@ -8,6 +8,10 @@
 
 //----------------------------------------------------------------------------------------------------------------
 
+#define CALCULATE_DIVISIONS
+
+//----------------------------------------------------------------------------------------------------------------
+
 static Node *CalculateNumbers(Node *node, bool *was_changed);
 
 static Node *CalculateBinaryOperations(Node *node);
@@ -133,16 +137,32 @@ Node *OptimizeExpression(Node *node)
     return node;
 }
 
-Node *Taylor(Node *node, const char *var, double point, int count)
-{    
+Node *Taylor(Node *node, const char *var, double point, int count, FILE *texfile)
+{   
+    fprintf(texfile, "Обозначим i-й моном многочлена Тейлора за $P_i$.\n\n");
+
     Node *Derivative = copyNode(node);
     Node *Taylor = FuncValue(copyNode(Derivative), var, point);
-
+    
     for (int i = 1; i < count; i++)
     {
-        Node *tmp_derivative = Div(Diff(Derivative, var), CreateNum(i));
+        const int max_func_name = 50;
+        char der_name[max_func_name] = "";
+        char monomial[max_func_name] = "";
 
+        sprintf(der_name, "\\frac{f^{(%d)}(%s)}{%d!} = ", i, var, i);
+        sprintf(monomial, "P_{%d}(%s) = ", i, var);
+
+        Node *tmp_derivative = Div(Diff(Derivative, var), CreateNum(i));
+        treeLatex(tmp_derivative, texfile, der_name, true);
+
+        treeGraphDump(tmp_derivative);
+
+        tmp_derivative = OptimizeExpression(tmp_derivative);
+        treeLatex(tmp_derivative, texfile, der_name, true);
+        
         Node *TaylorNext = Mul(FuncValue(copyNode(tmp_derivative), var, point), Pow(Sub(CreateVar(var), CreateNum(point)), CreateNum(i)));
+        treeLatex(TaylorNext, texfile, monomial, true);
 
         Taylor = Add(Taylor, TaylorNext);
 
@@ -281,10 +301,30 @@ static Node *CalculateNumbers(Node *node, bool *was_changed)
 
     if (node->type == OP)
     {
-        if (node->left != nullptr && node->right != nullptr && node->left->type == NUM && node->right->type == NUM)
+        if (node->left != nullptr && node->right != nullptr)
         {
-            CalculateBinaryOperations(node);
-            wasCurChanged = true;
+            if (node->left->type == NUM && node->right->type == NUM)
+            {
+                wasCurChanged = true;
+
+                const double MIN_VALUE = 0.2;
+                
+                if (node->data.op != DIV || fabs(node->left->data.value / node->right->data.value) > MIN_VALUE)
+                {
+                    CalculateBinaryOperations(node);
+                }
+                else //if (op == DIV && fabs(left.val / right.val) < MIN) 
+                {
+                    node->right->data.value /= node->left->data.value;
+                    node->left->data.value = 1;
+
+                    if (node->right->data.value < -MIN_VALUE)
+                    {
+                        node->right->data.value *= -1;
+                        node->left->data.value  *= -1;
+                    }
+                }
+            }
         }
     }
     else
@@ -503,6 +543,19 @@ static Node *DeleteFuncUslessNode(Node *node, bool *was_changed)
                 node = SetLeftNodeToThis(node);
                 *was_changed = true;
             }
+        }
+    }
+    else if (node->data.op == SQRT && node->right->type == NUM)
+    {
+        if (isEqualDoubleNumbers((int)sqrt(node->right->data.value), sqrt(node->right->data.value)))
+        {
+            node->data.value = sqrt(node->right->data.value);
+            nodeDtor(node->right);
+            
+            node->type       = NUM;
+            node->left       = nullptr;
+            node->right      = nullptr;
+            *was_changed     = true;
         }
     }
 

@@ -10,7 +10,7 @@
 Node *Diff(Node *node, const char *var);
 Node *FuncValue(Node *node, const char *var, double value);
 Node *OptimizeExpression(Node *node);
-Node *Taylor(Node *node, const char *var, double point, int count);
+Node *Taylor(Node *node, const char *var, double point, int count, FILE *texfile);
 
 //----------------------------------------------------------------------------------------------------------------
 

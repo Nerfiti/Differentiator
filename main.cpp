@@ -10,28 +10,31 @@ int main()
     initLog();
     FILE *texfile = initLatex();
     
-    stack_id stk = {};
-    StackCtor(&stk);
+    for (int i = 0; i < 1; ++i)
+    {
+        stack_id stk = {};
+        StackCtor(&stk);
 
-    char exp[1000] = "e^(sin(x))";
+        char exp[1000] = "";
 
-    //scanf("%s", exp);
+        scanf("%s", exp);
 
-    GetTokens(exp, stk);
+        GetTokens(exp, stk);
 
-    Node *node = GetStarted(stk);
+        Node *node = GetStarted(stk);
 
-    treeLatex(node, texfile);
+        treeLatex(node, texfile);
 
-    node = Taylor(node, "x", 0, 4);
+        node = Taylor(node, "x", 0, 7, texfile);
 
-    treeLatex(node, texfile);
-    
-    node = OptimizeExpression(node);
+        treeLatex(node, texfile, "f(x) = ", true);
+        
+        node = OptimizeExpression(node);
 
-    treeGraphDump(node);
+        treeLatex(node, texfile, "f(x) = ", true);
 
-    treeLatex(node, texfile);
+        StackDtor(&stk);
+    }
 
     closeLatex(texfile);
     closeLog();

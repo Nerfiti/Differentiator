@@ -1,8 +1,8 @@
 #include <cassert>
 #include <malloc.h>
 #include <cstdlib>
+#include <random>
 #include <unistd.h>
-
 
 #include "logs.hpp"
 #include "MyGeneralFunctions.hpp"
@@ -145,7 +145,7 @@ void nodeDtor(Node *node)
 }
 
 void treePrint(FILE *stream, const Node *node, bool needBrackets)
-{
+{    
     if (node != nullptr)
     {
         fprintf(stream, "%c", OPEN_NODE_SYM);
@@ -162,18 +162,22 @@ void treePrint(FILE *stream, const Node *node, bool needBrackets)
             treePrint(stream, node->right);
         }
         else
-        {
+        { 
             Node *left  = node->left;
             Node *right = node->right;
             
             bool  needLeftBrackets =  left != nullptr &&  left->type == OP && OPS[ left->data.op].priority < OPS[node->data.op].priority;
             bool needRightBrackets = right != nullptr && right->type == OP && OPS[right->data.op].priority < OPS[node->data.op].priority;
-            
+
+            needLeftBrackets  = needLeftBrackets  || (node->type == OP && node->data.op == MUL && left->type  == NUM && left->data.value  < 0);
+            needRightBrackets = needRightBrackets || (node->type == OP && node->data.op == MUL && right->type == NUM && right->data.value < 0);
+
             treePrint(stream, node->left, needLeftBrackets);
 
             printNodeData(stream, node->type, node->data);
 
             treePrint(stream, node->right, needRightBrackets);
+
         }
 
         if (needBrackets)
@@ -197,16 +201,22 @@ void treePrint(const char *filename, const Node *node, bool needBrackets)
     treePrint(stream, node, needBrackets);
 }
 
-void treeLatex(const Node *node, FILE *out)
+void treeLatex(const Node *node, FILE *out, const char *prefix, bool withPhrases)
 {
     assert(out);
 
-    fprintf(out, "\n\n%s\n$$ ", phrases[0]);
+    int phrase = rand() % number_of_phrases;
+    if (withPhrases)
+    {
+        fprintf(out, "\n%s", phrases[phrase]);
+    }
+    fprintf(out, "\n$$%s", prefix);
+
     treePrint(out, node);
     fprintf(out, "$$\n\n");
 }
 
-void treeLatex(const Node *node, const char *filename)
+void treeLatex(const Node *node, const char *filename, const char *prefix, bool withPhrases)
 {
     FILE *out = fopen(filename, "a");
 
@@ -216,7 +226,7 @@ void treeLatex(const Node *node, const char *filename)
         return;
     }
 
-    treeLatex(node, out);
+    treeLatex(node, out, prefix, withPhrases);
 
     fclose(out);
 }
@@ -390,7 +400,7 @@ static void printNodeData(FILE *stream, Type type, Data data)
 { 
     if (type == NUM)
     {
-        fprintf(stream, "%.2lg", data.value);
+        fprintf(stream, "%lg", data.value);
     }
     else if (type == VAR)
     {
