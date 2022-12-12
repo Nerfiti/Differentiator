@@ -1,35 +1,78 @@
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 #include "Differentiator.hpp"
 #include "Syntax_analyzer.hpp"
 
-void GetTokens();
+//--------------------------------------------------------------------------------------------------------------------------------------------------------
 
-Node *GetStarted(const char *str)
-{   
-    Node *node = GetSumSubExpression(&str);
-    if (*str != '\0')
+static bool GetOperationToken(const char **str, token *Token); 
+
+static void GetVariableToken(const char **str, token *Token);
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+void GetTokens(const char *str, stack_id stk)
+{
+    token Token = {};
+    char *endptr = nullptr;
+
+    while (*str != '\0')
     {
-        printf("Syntax error in symbol %c. Expected: '\\0'\n", *str);
+        Token.init_symbol = str;
+        
+        if ('0' <= *str && *str <= '9')
+        {
+            Token.data.value = strtod(str, &endptr);
+            Token.type       = NUM;
+
+            str = endptr;
+        }
+        else if (!GetOperationToken(&str, &Token))
+        {
+            GetVariableToken(&str, &Token);
+        }
+
+        StackPush(stk, Token);
+    }
+    Token.type = END_EXPRESSION;
+    Token.init_symbol = str;
+    Token.data = {};
+    StackPush(stk, Token);
+}
+
+Node *GetStarted(stack_id stk)
+{   
+    int reader = 0;
+
+    Node *node = GetSumSubExpression(stk, &reader);
+    token Token = GetItem(stk, reader);
+
+    if (Token.type != END_EXPRESSION)
+    {
+        assert(Token.init_symbol);
+        printf("Syntax error in symbol %c. Expected: '\\0'\n", *Token.init_symbol);
         fflush(stdout);
         abort();
     }
     return node;
 }
 
-Node *GetSumSubExpression(const char **str)
+Node *GetSumSubExpression(stack_id stk, int *reader)
 {
-    Node *node = GetMulDivExpression(str);
+    Node *node = GetMulDivExpression(stk, reader);
 
-    while (**str == '+' || **str == '-')
+    token Token = GetItem(stk, *reader);
+
+    while (Token.type == OP && (Token.data.op == ADD || Token.data.op == SUB))
     {
-        char op = **str;
-        (*str)++;
+        Operations op = Token.data.op;
+        (*reader)++;
 
-        Node *second_node = GetMulDivExpression(str);
+        Node *second_node = GetMulDivExpression(stk, reader);
 
-        if (op == '+')
+        if (op == ADD)
         {
             node = Add(node, second_node);
         }
@@ -37,22 +80,27 @@ Node *GetSumSubExpression(const char **str)
         {
             node = Sub(node, second_node);
         }
+
+        Token = GetItem(stk, *reader);
     }
+
     return node;
 }
 
-Node *GetMulDivExpression(const char **str)
+Node *GetMulDivExpression(stack_id stk, int *reader)
 {
-    Node *node = GetBrackets(str);
+    Node *node = GetUnary(stk, reader);
 
-    while (**str == '*' || **str == '/')
+    token Token = GetItem(stk, *reader);
+
+    while (Token.type == OP && (Token.data.op == MUL || Token.data.op == DIV))
     {
-        char op = **str;
-        (*str)++;
+        char op = Token.data.op;
+        (*reader)++;
+        
+        Node *second_node = GetUnary(stk, reader);
 
-        Node *second_node = GetBrackets(str);
-
-        if (op == '*')
+        if (op == MUL)
         {
             node = Mul(node, second_node);
         }
@@ -60,60 +108,256 @@ Node *GetMulDivExpression(const char **str)
         {
             node = Div(node, second_node);
         }
+
+        Token = GetItem(stk, *reader);
     }
+
     return node;
 
 }
 
-Node *GetBrackets(const char **str)
+Node *GetUnary(stack_id stk, int *reader)
+{
+    int sign = 1;
+
+    token Token = GetItem(stk, *reader);
+
+    if (Token.type == OP && (Token.data.op == SUB || Token.data.op == ADD)) 
+    {
+        sign = Token.data.op == SUB ? -1 : 1;
+        (*reader)++;
+    }
+
+    Node *node = GetFunction(stk, reader);
+
+    if (sign == -1) 
+    {
+        return Mul(CreateNum(-1), node);
+    }
+    return node;
+}
+
+Node *GetFunction(stack_id stk, int *reader)
 {
     Node *node = nullptr;
-    if (**str == '(')
+
+    token Token = GetItem(stk, *reader);
+
+    Operations op = Token.data.op;
+
+    if (Token.type == OP && (op == SIN    || op == COS    || op == TAN    || op == COT    ||
+                             op == ARCSIN || op == ARCCOS || op == ARCTAN || op == ARCCOT ||
+                             op == LN     || op == SQRT))
     {
-        (*str)++;
-        node = GetSumSubExpression(str);
-        if (**str != ')')
+        (*reader)++;
+        
+        Token = GetItem(stk, *reader);
+        (*reader)++;
+
+        if (!(Token.type == OP && Token.data.op == OPEN_BRACKET))
         {
-            printf("Syntax error in symbol %c. Expexted: ')'\n", **str);
+            printf("Syntax error. Functions arguments must be started with '('\n");
             fflush(stdout);
             abort();
         }
-        (*str)++;
+        node = CreateNode(OP, {.op = op}, nullptr, GetSumSubExpression(stk, reader));
+        
+        Token = GetItem(stk, *reader);
+        (*reader)++;
+
+        if (!(Token.type == OP && Token.data.op == CLOSE_BRACKET))
+        {
+            printf("Syntax error. Functions arguments must be ended with ')'\n");
+            fflush(stdout);
+            abort();
+        }
     }
-    else if ('a' <= **str && **str <= 'z')
+    else
     {
-        node = GetVariable(str);
+        node = GetPow(stk, reader);
     }
-    else 
-    {
-        node = GetNumber(str);
-    }
+
     return node;
 }
 
-Node *GetVariable(const char **str)
+Node *GetPow(stack_id stk, int *reader)
 {
-    char var = **str;
-    (*str)++;
-    return CreateVar(var);
-}
+    Node *node = GetBrackets(stk, reader);
 
-Node *GetNumber(const char **str)
-{
-    int val = 0;
-    const char *strOld = *str;
-
-    while ('0' <= **str && **str <= '9')
+    token Token = GetItem(stk, *reader);
+    
+    if (Token.type == OP && Token.data.op == POW)
     {
-        val = val * 10 + **str - '0';
-        (*str)++;
+        (*reader)++;
+
+        Node *second_node = GetUnary(stk, reader);
+
+        node = Pow(node, second_node);
     }
 
-    if (*str <= strOld)
+    return node;
+}
+
+Node *GetBrackets(stack_id stk, int *reader)
+{
+    Node *node = nullptr;
+
+    token Token = GetItem(stk, *reader);
+
+
+    if (Token.type == OP && Token.data.op == OPEN_BRACKET)
     {
-        printf("Syntax error: %c is not a number\n", **str);
+        (*reader)++;
+
+        node = GetSumSubExpression(stk, reader);
+
+        Token = GetItem(stk, *reader);
+        (*reader)++;
+        
+        if (!(Token.type == OP && Token.data.op == CLOSE_BRACKET))
+        {
+            printf("Error in symbol %c. Expected ')'\n", *Token.init_symbol);
+            fflush(stdout);
+            abort();
+        }
+    }
+    else if (Token.type == VAR)
+    {
+        node = GetVariable(stk, reader);
+    }
+    else
+    {
+        node = GetNumber(stk, reader);
+        //treeGraphDump(node);
+
+    }
+    
+    return node;
+}
+
+Node *GetVariable(stack_id stk, int *reader)
+{
+    token Token = GetItem(stk, *reader);
+    (*reader)++;
+
+    if (Token.type != VAR)
+    {
+        printf("Syntax error in symbol %c. Expected variable.\n", *Token.init_symbol);
         fflush(stdout);
         abort();
     }
-    return CreateNum(val);
+
+    return CreateVar(Token.data.var);
 }
+
+Node *GetNumber(stack_id stk, int *reader)
+{
+    token Token = GetItem(stk, *reader);
+    (*reader)++;
+
+    if (Token.type != NUM)
+    {
+        printf("Syntax error in symbol %c. Expected number.\n", *Token.init_symbol);
+        fflush(stdout);
+        abort();
+    }
+
+    return CreateNum(Token.data.value);
+}
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+#define CHECK_OP(OP)                        \
+{                                           \
+    len = strlen(#OP);                      \
+    if (strncasecmp(*str, #OP, len) == 0)   \
+    {                                       \
+        Token->data.op = OP;                \
+        *str += len;                        \
+        return true;                        \
+    }                                       \
+}
+
+static bool GetOperationToken(const char **str, token *Token)
+{
+    *Token = {};
+    Token->type        = OP;
+    Token->init_symbol = *str;
+    
+    switch (**str)
+    {
+        case '+':
+            Token->data.op = ADD;
+            (*str)++;
+            return true;
+
+        case '-':
+            Token->data.op = SUB;
+            (*str)++;
+            return true;
+
+        case '*':
+            Token->data.op = MUL;
+            (*str)++;
+            return true;
+
+        case '/':
+            Token->data.op = DIV;
+            (*str)++;
+            return true;
+
+        case '(':
+            Token->data.op = OPEN_BRACKET;
+            (*str)++;
+            return true;
+
+        case ')':
+            Token->data.op = CLOSE_BRACKET;
+            (*str)++;
+            return true;
+
+        case '^':
+            Token->data.op = POW;
+            (*str)++;
+            return true;
+
+        default:
+            int len = 0;
+
+            CHECK_OP(SIN);
+            CHECK_OP(COS);
+            CHECK_OP(TAN);
+            CHECK_OP(COT);
+            CHECK_OP(ARCSIN);
+            CHECK_OP(ARCCOS);
+            CHECK_OP(ARCTAN);
+            CHECK_OP(ARCCOT);
+            CHECK_OP(LN);
+            CHECK_OP(SQRT);
+            break;
+    }
+    return false;
+}
+
+#undef CHECK_OP
+
+static void GetVariableToken(const char **str, token *Token)
+{
+    Token->init_symbol = *str;
+    Token->type = VAR;
+
+    int i = 0;
+    while (i < 7 && (('a' <= **str && **str <= 'z') || ('A' <= **str && **str <= 'Z')))
+    {
+        Token->data.var[i] = **str;
+        i++;
+        (*str)++;
+    }
+    while (i < 8)
+    {
+        Token->data.var[i] = '\0';
+        i++;
+    }
+}
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------

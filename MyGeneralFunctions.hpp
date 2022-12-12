@@ -1,13 +1,21 @@
 #ifndef MYGENERALFUNCTIONS_HPP
 #define MYGENERALFUNCTIONS_HPP
 
+//----------------------------------------------------------------------------------------------------------------
+
 #include "stdio.h"
 #include <sys/types.h>
+
+//----------------------------------------------------------------------------------------------------------------
 
 ///If the pointer value matches this value, then the memory allocated to this pointer had been freed
 extern const void *const JUST_FREE_PTR;
 
+//----------------------------------------------------------------------------------------------------------------
+
 typedef int comp_t(const void *item1, const void *item2);
+
+//----------------------------------------------------------------------------------------------------------------
 
 //-----------------------------------------------------------
 //! Sort array
@@ -42,10 +50,13 @@ pid_t CMD_Speak(const char *format, va_list ptr);
 //! \param [optional] ... arguments for printf and speech
 //-----------------------------------------------------------
 void CMD_SpeakAndWait(const char *format, ...);
+
 void CMD_SpeakAndWait(const char *format, va_list ptr);
 
 void GetLine(char *target);
 
 bool isEqualDoubleNumbers(double first_num, double second_num);
+
+//----------------------------------------------------------------------------------------------------------------
 
 #endif //MYGENERALFUNCTIONS_HPP

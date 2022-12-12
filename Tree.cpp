@@ -1,5 +1,8 @@
+#include <cassert>
 #include <malloc.h>
 #include <cstdlib>
+#include <unistd.h>
+
 
 #include "logs.hpp"
 #include "MyGeneralFunctions.hpp"
@@ -13,46 +16,91 @@
 
 static int Dump_counter = 1;
 
-static const int  MAX_PATH_LEN    = 30;
-static const char DUMP_PATH[]     = "./DumpFiles/Dump%d.dot";
-static const char SVG_DUMP_PATH[] = "./DumpFiles/Dump%d.svg";
+static const int  MAX_PATH_LEN   = 30;
+static const char *DUMP_PATH     = "./DumpFiles/Dump%d.dot";
+static const char *SVG_DUMP_PATH = "./DumpFiles/Dump%d.svg";
 
-static const char ADD_DUMP_TO_HTML_CODE[] = "<details open>\n"
+static const char *ADD_DUMP_TO_HTML_CODE =  "<details open>\n"
                                                 "\t<summary>Dump%d</summary>\n"
                                                 "\t<img src = \".%s\">\n"
                                             "</details>\n\n";
 
-static const char NODE_COLOR[]      = "cornflowerblue";
-static const char LEAF_COLOR[]      = "springGreen";
+static const char *NODE_COLOR = "cornflowerblue";
+static const char *LEAF_COLOR = "springGreen";
 
-static const char  LEFT_EDGE_COLOR[] = "red";
-static const char RIGHT_EDGE_COLOR[] = "green";
+static const char *LEFT_EDGE_COLOR  = "red";
+static const char *RIGHT_EDGE_COLOR = "green";
 
-static const char START_GRAPH[] =   "digraph {\n"
+static const char *START_GRAPH =    "digraph {\n"
                                         "\tbgcolor=\"invis\"\n"
                                         "\tordering = out\n\n"
                                     "node[style = filled, shape = record]\n\n";
+
+//----------------------------------------------------------------------
+//FOR LATEX
+//----------------------------------------------------------------------
+
+//Path of the TEX files is in the Tree.hpp
+
+static const char *START_LATEX  =   "\\documentclass{article}\n"
+                                    "\\usepackage[T2A]{fontenc}\n"
+                                    "\\usepackage[utf8]{inputenc}\n"
+                                    "\\usepackage[russian, english]{babel}\n"
+                                    "\\begin{document}\n\n";
+
+static const char *END_LATEX    =   "\\end{document}";
+
+#include "phrases.hpp"
+
+//----------------------------------------------------------------------
+
+struct operation
+{
+    const char *label       = nullptr;
+    const char *latex_label = nullptr;
+    const int   priority    = 0;
+};
+
+static const operation OPS[NUMBER_OF_OPERATIONS] = 
+{
+    {"+"     , "+"        , 1},
+    {"-"     , "-"        , 1},
+    {"*"     , "\\cdot "  , 2},
+    {"/"     , "\\frac"   , 2},
+    {"sin"   , "\\sin "   , 3},
+    {"cos"   , "\\cos "   , 3},
+    {"tan"   , "\\tan "   , 3},
+    {"cot"   , "\\cot "   , 3},
+    {"arcsin", "\\arcsin ", 3},
+    {"arccos", "\\arccos ", 3},
+    {"arctan", "\\arctan ", 3},
+    {"arccot", "\\arccot ", 3},
+    {"ln"    , "\\ln "    , 3},
+    {"sqrt"  , "\\sqrt "  , 3},
+    {"pow"   , "^"        , 4},
+    {"oBr"   , "("        , 5},
+    {"cBr"   , ")"        , 5}
+};
 
 //--------------------------------------------------------------
 
 static Node *addNode              (Node *node, Type type, Data data, bool toLeft);
 static int  creatGraphvizTreeCode (const Node *node, int nodeNum, FILE *dump_file);
 static void get_dump_filenames    (char *dump_filename, char *svg_dump_filename);
-static void printNodeData         (FILE *stream, Type type, Data data, int space, PrintMode mode);
-static void setSpace              (FILE *stream, int space);
+static void printNodeData         (FILE *stream, Type type, Data data);
 static bool IsLeaf                (const Node *node);
 
 //--------------------------------------------------------------
 
-Node *treeCtor(Type type, Data data)//TODO: 3 Ctors
+Node *treeCtor(Type type, Data data)
 {
     Node *node = (Node *)calloc(1, sizeof(Node));
-
-    node->type       = type;
-    node->data.value = data.value;
-    node->left       = nullptr;
-    node->right      = nullptr;
-    node->parent     = nullptr;
+    
+    node->type   = type;
+    node->data   = data;
+    node->left   = nullptr;
+    node->right  = nullptr;
+    node->parent = nullptr;
 
     return node;
 }
@@ -82,11 +130,11 @@ void nodeDtor(Node *node)
     if (node == nullptr) {return;}
 
     #ifdef DEBUG
-        node->type       = NUM;
-        node->data.value = 0;
-        node->left       = nullptr;
-        node->right      = nullptr;
-        node->parent     = nullptr;
+        node->type   = NUM;
+        node->data   = {};
+        node->left   = nullptr;
+        node->right  = nullptr;
+        node->parent = nullptr;
     #endif //DEBUG
 
     if (node != JUST_FREE_PTR) 
@@ -96,46 +144,48 @@ void nodeDtor(Node *node)
     }
 }
 
-void treePrint(FILE *stream, const Node *node, PrintMode mode, int space)
+void treePrint(FILE *stream, const Node *node, bool needBrackets)
 {
-    setSpace(stream, space);
-    space++;
-
-    fprintf(stream, "%c", OPEN_NODE_SYM);
-
     if (node != nullptr)
     {
-        if (mode == PRE_ORDER)
+        fprintf(stream, "%c", OPEN_NODE_SYM);
+
+        if (needBrackets)
         {
-            printNodeData(stream, node->type, node->data, space, mode);
+            fprintf(stream, "%s", OPS[OPEN_BRACKET].latex_label);
+        }        
+
+        if (node->type == OP && node->data.op == DIV)
+        {
+            fprintf  (stream, "%s", OPS[DIV].latex_label);
+            treePrint(stream, node->left );
+            treePrint(stream, node->right);
         }
         else
         {
-            fprintf(stream, "\n");
+            Node *left  = node->left;
+            Node *right = node->right;
+            
+            bool  needLeftBrackets =  left != nullptr &&  left->type == OP && OPS[ left->data.op].priority < OPS[node->data.op].priority;
+            bool needRightBrackets = right != nullptr && right->type == OP && OPS[right->data.op].priority < OPS[node->data.op].priority;
+            
+            treePrint(stream, node->left, needLeftBrackets);
+
+            printNodeData(stream, node->type, node->data);
+
+            treePrint(stream, node->right, needRightBrackets);
         }
 
-        treePrint(stream, node->left, mode, space);
-
-        if (mode == IN_ORDER)
+        if (needBrackets)
         {
-            printNodeData(stream, node->type, node->data, space, mode);
-        }
+            fprintf(stream, "%s", OPS[CLOSE_BRACKET].latex_label);
+        }  
 
-        treePrint(stream, node->right, mode, space);
-
-        if (mode == POST_ORDER)
-        {
-            printNodeData(stream, node->type, node->data, space, mode);
-        }
-        
-        space--;
-        setSpace(stream, space);
+        fprintf(stream, "%c", CLOSE_NODE_SYM);
     }
-
-    fprintf(stream, "%c\n", CLOSE_NODE_SYM);
 }
 
-void treePrint(const char *filename, const Node *node, PrintMode mode, int space)
+void treePrint(const char *filename, const Node *node, bool needBrackets)
 {
     FILE *stream = fopen(filename, "w");
     if (stream == nullptr)
@@ -144,7 +194,31 @@ void treePrint(const char *filename, const Node *node, PrintMode mode, int space
         return;
     }
 
-    treePrint(stream, node, mode, space);
+    treePrint(stream, node, needBrackets);
+}
+
+void treeLatex(const Node *node, FILE *out)
+{
+    assert(out);
+
+    fprintf(out, "\n\n%s\n$$ ", phrases[0]);
+    treePrint(out, node);
+    fprintf(out, "$$\n\n");
+}
+
+void treeLatex(const Node *node, const char *filename)
+{
+    FILE *out = fopen(filename, "a");
+
+    if (out == nullptr)
+    {
+        printf("Error opening tex file: %s\n", filename);
+        return;
+    }
+
+    treeLatex(node, out);
+
+    fclose(out);
 }
 
 void treeGraphDump(const Node *node)
@@ -181,6 +255,67 @@ void treeGraphDump(const Node *node)
     Dump_counter++;
 }
 
+FILE *initLatex(const char *filename)
+{
+    FILE *out = fopen(filename, "w");
+
+    if (out == nullptr)
+    {
+        printf("Error opening tex file: %s\n", filename);
+        return nullptr;
+    }
+
+    return initLatex(out);
+}
+
+FILE *initLatex(FILE *stream)
+{
+    fprintf(stream, "%s", START_LATEX);
+
+    return stream;
+}
+
+void closeLatex(const char *filename)
+{
+    FILE *out = fopen(filename, "a");
+
+    if (out == nullptr)
+    {
+        printf("Error opening tex file to end it: %s\n", filename);
+        return;
+    }
+
+    closeLatex(out);
+}
+
+void closeLatex(FILE *stream)
+{
+    fprintf(stream, "%s", END_LATEX);
+    fclose(stream);
+
+    pid_t PID = fork();
+    if (PID == 0)
+    {
+        execlp("pdflatex", "pdflatex", OUT_TEX_FILE, (char *)0);
+        perror("Error running espeak: ");
+        exit(1);
+    }
+}
+
+Node *copyNode(Node *node)
+{
+    if (node == nullptr) {return node;}
+
+    Node *newNode = treeCtor(node->type, node->data);
+    
+    newNode->parent = node->parent;
+    
+    newNode->left  = copyNode(node->left);
+    newNode->right = copyNode(node->right);
+
+    return newNode;
+}
+
 //--------------------------------------------------------------
 
 static Node *addNode(Node *node, Type type, Data data, bool toLeft)
@@ -194,7 +329,7 @@ static Node *addNode(Node *node, Type type, Data data, bool toLeft)
     return newNode;
 }
 
-static int creatGraphvizTreeCode(const Node *node, int nodeNum, FILE *dump_file)
+static int creatGraphvizTreeCode(const Node *node, int nodeNum, FILE *dump_file)//TODO:
 {
     int number_of_nodes = 0;
     if (node == nullptr) {return number_of_nodes;}
@@ -230,11 +365,11 @@ static int creatGraphvizTreeCode(const Node *node, int nodeNum, FILE *dump_file)
     }
     else if (node->type == OP)
     {
-        fprintf(dump_file, "OP|%c\"]\n", node->data.op);
+        fprintf(dump_file, "OP|%s\"]\n", OPS[node->data.op].label);
     }
     else if (node->type == VAR)
     {
-        fprintf(dump_file, "VAR|%c\"]\n", node->data.var);
+        fprintf(dump_file, "VAR|%s\"]\n", node->data.var);
     }
     else 
     {
@@ -251,27 +386,21 @@ static void get_dump_filenames(char *dump_filename, char *svg_dump_filename)
     sprintf(svg_dump_filename, SVG_DUMP_PATH, Dump_counter);
 }
 
-static void printNodeData(FILE *stream, Type type, Data data, int space, PrintMode mode)//TODO:
+static void printNodeData(FILE *stream, Type type, Data data)
 { 
-    // if (mode != PRE_ORDER) 
-    // {
-    //     setSpace(stream, space);
-    // }
-
-    // fprintf(stream, "\"%s\"\n", data);
-}
-
-#ifdef DEBUG
-    static void setSpace(FILE *stream, int space)
+    if (type == NUM)
     {
-        for (int i = 0; i < space; ++i)
-        {
-            fprintf(stream, "\t");
-        }
+        fprintf(stream, "%.2lg", data.value);
     }
-#else
-    static void setSpace(FILE *stream, int space) {}
-#endif //DEBUG
+    else if (type == VAR)
+    {
+        fprintf(stream, "%s", data.var);
+    }
+    else //if (Type == OP)
+    { 
+        fprintf(stream, "%s", OPS[data.op].latex_label);
+    }
+}
 
 static bool IsLeaf(const Node *node)
 {

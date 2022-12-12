@@ -8,28 +8,31 @@
 int main()
 {
     initLog();
+    FILE *texfile = initLatex();
+    
+    stack_id stk = {};
+    StackCtor(&stk);
 
-    int start = 1;
-    int finish = 1;
+    char exp[1000] = "e^(sin(x))";
 
-    while (start <= finish)
-    {
-        const int max_expression_len = 1000;
-        
-        char exp[max_expression_len] = "";
-        GetLine(exp);
-        exp[max_expression_len - 1] = '\0';
+    //scanf("%s", exp);
 
-        Node *node = GetStarted(exp);
-        treeGraphDump(node);
+    GetTokens(exp, stk);
 
-        node = Diff(node);
-        treeGraphDump(node);
+    Node *node = GetStarted(stk);
 
-        node = OptimizeExpression(node);
+    treeLatex(node, texfile);
 
-        start++;
-    }
+    node = Taylor(node, "x", 0, 4);
 
+    treeLatex(node, texfile);
+    
+    node = OptimizeExpression(node);
+
+    treeGraphDump(node);
+
+    treeLatex(node, texfile);
+
+    closeLatex(texfile);
     closeLog();
 }
