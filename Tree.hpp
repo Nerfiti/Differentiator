@@ -74,16 +74,20 @@ void  nodeDtor   (Node *node);
 
 void treePrint     (FILE *stream,         const Node *node, bool needBrackets = false);
 void treePrint     (const char *filename, const Node *node, bool needBrackets = false);
-void treeLatex     (const Node *node, FILE *out, const char *prefix = "f(x) = ", bool withPhrases = false);
-void treeLatex     (const Node *node, const char *filename = OUT_TEX_FILE, const char *prefix = "f(x) = ", bool withPhrases = false);
+void treeLatex     (const Node *node, FILE *out, const char *prefix = "f(x) = ", bool withPhrases = false, const char *postfix = "");
 void treeGraphDump (const Node *node);
 
 FILE *initLatex  (const char *filename = OUT_TEX_FILE);
 FILE *initLatex  (FILE *stream);
-void  closeLatex (const char *filename = OUT_TEX_FILE);
 void  closeLatex (FILE *stream);
 
 Node *copyNode (Node *node);
+
+void LatexPlot        (Node *node, int width, int height, FILE *texfile, const char *funcname);
+
+FILE *OpenGnuPlotFile (int width, int height);
+void AddToGnuplotFile (FILE *plotfile, Node *node, const char *mode, int width, const char *funcname);
+void CreatePlot       (FILE *plotfile, FILE *texfile);
 
 //----------------------------------------------------------------------
 

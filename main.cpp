@@ -5,37 +5,16 @@
 #include "MyGeneralFunctions.hpp"
 #include "Syntax_analyzer.hpp"
 
-int main()
+int main(const int argc, const char *argv[])
 {
     initLog();
-    FILE *texfile = initLatex();
-    
-    for (int i = 0; i < 1; ++i)
-    {
-        stack_id stk = {};
-        StackCtor(&stk);
 
-        char exp[1000] = "";
+    const char *filename = (argc == 2) ? argv[1] : "./funcfile";
+    FILE *input_file = fopen(filename, "r");
 
-        scanf("%s", exp);
+    FILE *texfile = fopen(OUT_TEX_FILE, "w");
 
-        GetTokens(exp, stk);
+    AnalyseFunction(input_file);
 
-        Node *node = GetStarted(stk);
-
-        treeLatex(node, texfile);
-
-        node = Taylor(node, "x", 0, 7, texfile);
-
-        treeLatex(node, texfile, "f(x) = ", true);
-        
-        node = OptimizeExpression(node);
-
-        treeLatex(node, texfile, "f(x) = ", true);
-
-        StackDtor(&stk);
-    }
-
-    closeLatex(texfile);
     closeLog();
 }

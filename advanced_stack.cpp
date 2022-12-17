@@ -10,9 +10,9 @@ typedef unsigned long long Hash;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-const int      factor          =  2;
-const size_t   STD_CAPACITY    =  10;
-const CANARY_t CANARY          =  0xFEEEB1ED;
+const int      factor          = 2;
+const size_t   STD_CAPACITY    = 10;
+const CANARY_t CANARY          = 0xFEEEB1ED;
 const int      max_err_msg_len = 24;
 
 //----------------------------------------------------------------------------------------------------------------------

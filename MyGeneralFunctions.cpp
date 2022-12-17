@@ -2,6 +2,8 @@
 #include <cstdarg>
 #include <cstdlib>
 #include <signal.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -9,7 +11,7 @@
 
 const void *const JUST_FREE_PTR = "JUST_FREE";
 
-const double MIN_POSITIVE_DOUBLE_VALUE   = 10e-8; 
+const double MIN_POSITIVE_DOUBLE_VALUE = 10e-8; 
 
 //--------------------------------------------------------------------------------------
 
@@ -113,6 +115,26 @@ bool isEqualDoubleNumbers(double first_num, double second_num)
 {
     double difference = first_num - second_num;
     return (-MIN_POSITIVE_DOUBLE_VALUE < difference && difference < MIN_POSITIVE_DOUBLE_VALUE); 
+}
+
+int getFileSize(FILE *file)
+{
+    
+    struct stat info = {};
+    fstat(fileno(file), &info);
+
+    return info.st_size;
+}
+
+unsigned long long factorial(int number)
+{
+    unsigned long long result = 1;
+    for (int i = 1; i <= number; ++i)
+    {
+        result *= i;
+    }
+
+    return result;
 }
 
 //--------------------------------------------------------------------------------------

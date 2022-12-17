@@ -43,6 +43,8 @@ static FILE *Logfile = nullptr;
             return;
         }
 
+        setvbuf(Logfile, nullptr, _IONBF, 0);
+
         fprintf(Logfile, START_LOGFILE, BACKGROUND_IMG);
     }
 

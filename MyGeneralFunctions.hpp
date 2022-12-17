@@ -11,6 +11,8 @@
 ///If the pointer value matches this value, then the memory allocated to this pointer had been freed
 extern const void *const JUST_FREE_PTR;
 
+extern const double MIN_POSITIVE_DOUBLE_VALUE;
+
 //----------------------------------------------------------------------------------------------------------------
 
 typedef int comp_t(const void *item1, const void *item2);
@@ -56,6 +58,10 @@ void CMD_SpeakAndWait(const char *format, va_list ptr);
 void GetLine(char *target);
 
 bool isEqualDoubleNumbers(double first_num, double second_num);
+
+int getFileSize(FILE *file);
+
+unsigned long long factorial(int number);
 
 //----------------------------------------------------------------------------------------------------------------
 

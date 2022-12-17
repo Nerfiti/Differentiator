@@ -11,6 +11,8 @@ static bool GetOperationToken(const char **str, token *Token);
 
 static void GetVariableToken(const char **str, token *Token);
 
+static void PrintSyntaxError(const char *str, const char *err_sym, const char *expected);
+
 //--------------------------------------------------------------------------------------------------------------------------------------------------------
 
 void GetTokens(const char *str, stack_id stk)
@@ -20,6 +22,11 @@ void GetTokens(const char *str, stack_id stk)
 
     while (*str != '\0')
     {
+        if (*str == ' ' || *str == '\n')
+        {
+            str++;
+            continue;
+        }
         Token.init_symbol = str;
         
         if ('0' <= *str && *str <= '9')
@@ -51,10 +58,7 @@ Node *GetStarted(stack_id stk)
 
     if (Token.type != END_EXPRESSION)
     {
-        assert(Token.init_symbol);
-        printf("Syntax error in symbol %c. Expected: '\\0'\n", *Token.init_symbol);
-        fflush(stdout);
-        abort();
+        PrintSyntaxError(GetItem(stk, 0).init_symbol, Token.init_symbol, "'\\0'");
     }
     return node;
 }
@@ -137,7 +141,7 @@ Node *GetUnary(stack_id stk, int *reader)
     return node;
 }
 
-Node *GetFunction(stack_id stk, int *reader)
+Node *GetFunction(stack_id stk, int *reader) //TODO: Token status array
 {
     Node *node = nullptr;
 
@@ -156,9 +160,7 @@ Node *GetFunction(stack_id stk, int *reader)
 
         if (!(Token.type == OP && Token.data.op == OPEN_BRACKET))
         {
-            printf("Syntax error. Functions arguments must be started with '('\n");
-            fflush(stdout);
-            abort();
+            PrintSyntaxError(GetItem(stk, 0).init_symbol, Token.init_symbol, "'(' before function argument");
         }
         node = CreateNode(OP, {.op = op}, nullptr, GetSumSubExpression(stk, reader));
         
@@ -167,9 +169,7 @@ Node *GetFunction(stack_id stk, int *reader)
 
         if (!(Token.type == OP && Token.data.op == CLOSE_BRACKET))
         {
-            printf("Syntax error. Functions arguments must be ended with ')'\n");
-            fflush(stdout);
-            abort();
+            PrintSyntaxError(GetItem(stk, 0).init_symbol, Token.init_symbol, "')' after function argument");
         }
     }
     else
@@ -216,9 +216,7 @@ Node *GetBrackets(stack_id stk, int *reader)
         
         if (!(Token.type == OP && Token.data.op == CLOSE_BRACKET))
         {
-            printf("Error in symbol %c. Expected ')'\n", *Token.init_symbol);
-            fflush(stdout);
-            abort();
+            PrintSyntaxError(GetItem(stk, 0).init_symbol, Token.init_symbol, "')'");
         }
     }
     else if (Token.type == VAR)
@@ -228,8 +226,6 @@ Node *GetBrackets(stack_id stk, int *reader)
     else
     {
         node = GetNumber(stk, reader);
-        //treeGraphDump(node);
-
     }
     
     return node;
@@ -242,9 +238,7 @@ Node *GetVariable(stack_id stk, int *reader)
 
     if (Token.type != VAR)
     {
-        printf("Syntax error in symbol %c. Expected variable.\n", *Token.init_symbol);
-        fflush(stdout);
-        abort();
+        PrintSyntaxError(GetItem(stk, 0).init_symbol, Token.init_symbol, "variable");
     }
 
     return CreateVar(Token.data.var);
@@ -257,9 +251,7 @@ Node *GetNumber(stack_id stk, int *reader)
 
     if (Token.type != NUM)
     {
-        printf("Syntax error in symbol %c. Expected number.\n", *Token.init_symbol);
-        fflush(stdout);
-        abort();
+        PrintSyntaxError(GetItem(stk, 0).init_symbol, Token.init_symbol, "number");
     }
 
     return CreateNum(Token.data.value);
@@ -358,6 +350,18 @@ static void GetVariableToken(const char **str, token *Token)
         Token->data.var[i] = '\0';
         i++;
     }
+}
+
+static void PrintSyntaxError(const char *str, const char *err_sym, const char *expected)
+{
+    assert(str && err_sym && expected);
+
+    printf("Syntax error in symbol %c. Expected %s.\n\n", *err_sym, expected);
+
+    int pos = err_sym - str;
+    printf("%s\n" "%*c^\n%*c|\n\n", str, pos, ' ', pos, ' ');
+    fflush(stdout);
+    abort();
 }
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------

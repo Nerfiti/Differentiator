@@ -1,5 +1,7 @@
 all:
 	g++ Differentiator.cpp logs.cpp main.cpp MyGeneralFunctions.cpp Syntax_analyzer.cpp Tree.cpp advanced_stack.cpp -o Diff.out
+	./Diff.out
 
 debug: 
 	g++ Differentiator.cpp logs.cpp main.cpp MyGeneralFunctions.cpp Syntax_analyzer.cpp Tree.cpp advanced_stack.cpp -o Diff.out -g
+	gdb ./Diff.out

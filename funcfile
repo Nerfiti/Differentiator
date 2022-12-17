@@ -1,0 +1,5 @@
+func: sin(x^3) + (cos(15*x))^3
+point: 0.5
+count: 3
+width: 1
+height: 3

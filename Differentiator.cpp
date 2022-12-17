@@ -2,9 +2,11 @@
 #include <cmath>
 #include <cstring>
 
+#include "advanced_stack.hpp"
 #include "Differentiator.hpp"
 #include "logs.hpp"
 #include "MyGeneralFunctions.hpp"
+#include "Syntax_analyzer.hpp"
 
 //----------------------------------------------------------------------------------------------------------------
 
@@ -14,9 +16,9 @@
 
 static Node *CalculateNumbers(Node *node, bool *was_changed);
 
-static Node *CalculateBinaryOperations(Node *node);
+static Node *CalculateBinaryOperations(Node *node, bool *was_changed);
 
-static Node *CalculateUnaryOperations(Node *node);
+static Node *CalculateDivision(Node *node, bool *was_changed);
 
 static Node *DeleteUselessNodes(Node *node, bool *was_changed);
 
@@ -32,16 +34,22 @@ static Node *SetLeftNodeToThis(Node *node);
 
 static Node *SetRightNodeToThis(Node *node);
 
+static bool  isConstant(Node *node, const char *var);
+
+static void  Set_o_add(char *o_add, double point, int power);
+
 //----------------------------------------------------------------------------------------------------------------
 
 #define cThis   copyNode(node)
 #define cL      copyNode(node->left)
-#define dL      Diff(cL, var)
+#define dL      Diff(node->left, var)
 #define cR      copyNode(node->right)
-#define dR      Diff(cR, var)
+#define dR      Diff(node->right, var)
 
 Node *Diff(Node *node, const char *var)
 {
+    assert(node && var);
+
     switch (node->type)
     {
     case NUM:
@@ -87,10 +95,28 @@ Node *Diff(Node *node, const char *var)
         case SQRT:
             return Mul(Div(CreateNum(1), Mul(CreateNum(2), Sqrt(cR))), dR);
         case POW:
-            Node *power = Mul(cR, Ln(cL));
-            Node *ans = Mul(cThis, Diff(power, var)); 
-            nodeDtor(power);
-            return ans;           
+            bool isLeftConstant  = isConstant(node->left , var);
+            bool isRightConstant = isConstant(node->right, var);
+            if (isLeftConstant && isRightConstant)
+            {
+                return CreateNum(0);
+            }
+            else if (isLeftConstant)
+            {
+                return Mul(Mul(Pow(cL, cR), Ln(cL)), dR);
+            }
+            else if (isRightConstant)
+            {
+                return Mul(Mul(cR, Pow(cL, Sub(cR, CreateNum(1)))), dL);
+            }
+            else
+            {
+                Node *power = Mul(cR, Ln(cL));
+                Node *ans = Mul(cThis, Diff(power, var)); 
+                treeDtor(power);
+                return ans;    
+            }
+                       
         }
     }
 
@@ -139,38 +165,153 @@ Node *OptimizeExpression(Node *node)
 
 Node *Taylor(Node *node, const char *var, double point, int count, FILE *texfile)
 {   
-    fprintf(texfile, "Обозначим i-й моном многочлена Тейлора за $P_i$.\n\n");
+    fprintf(texfile, "Разложение функции f(%s) по Тейлору в точке '%lg' до %d-й степени.\n\n"
+                     "Обозначим i-й моном многочлена Тейлора за $P_i$.\n\n", var, point, count);
 
     Node *Derivative = copyNode(node);
+    Derivative = OptimizeExpression(Derivative);
+
     Node *Taylor = FuncValue(copyNode(Derivative), var, point);
-    
-    for (int i = 1; i < count; i++)
+    Taylor = OptimizeExpression(Taylor);
+
+    char o_add[50] = "";
+
+    for (int i = 1; i <= count; i++)
     {
+        treeGraphDump(Taylor);
         const int max_func_name = 50;
         char der_name[max_func_name] = "";
         char monomial[max_func_name] = "";
 
-        sprintf(der_name, "\\frac{f^{(%d)}(%s)}{%d!} = ", i, var, i);
+        sprintf(der_name, "f^{(%d)}(%s) = ", i, var);
         sprintf(monomial, "P_{%d}(%s) = ", i, var);
 
-        Node *tmp_derivative = Div(Diff(Derivative, var), CreateNum(i));
-        treeLatex(tmp_derivative, texfile, der_name, true);
-
-        treeGraphDump(tmp_derivative);
-
+        Node *tmp_derivative = Diff(Derivative, var);
         tmp_derivative = OptimizeExpression(tmp_derivative);
         treeLatex(tmp_derivative, texfile, der_name, true);
         
-        Node *TaylorNext = Mul(FuncValue(copyNode(tmp_derivative), var, point), Pow(Sub(CreateVar(var), CreateNum(point)), CreateNum(i)));
+        Node *TaylorNext = Mul(Div(FuncValue(copyNode(tmp_derivative), var, point), CreateNum(factorial(i))), Pow(Sub(CreateVar(var), CreateNum(point)), CreateNum(i)));        
+        TaylorNext = OptimizeExpression(TaylorNext);
         treeLatex(TaylorNext, texfile, monomial, true);
 
         Taylor = Add(Taylor, TaylorNext);
+        Taylor = OptimizeExpression(Taylor);
 
         nodeDtor(Derivative);
         Derivative = tmp_derivative;
     }
 
+    Set_o_add(o_add, point, count);
+    treeLatex(Taylor, texfile, "f(x) = ", true, o_add);
+
     return Taylor;
+}
+
+bool GetFuncForAnalyze(char *data, char *function, double *point, int *count, int *width, int *height)
+{
+    int position = 0;
+    int second_position = 0;
+
+    int errflag = sscanf(data, "func: %[^\n]\n %n", function, &position);
+    if (!errflag)
+    {
+        printf("Error in input file. Func is not found.\n");
+        return false;
+    }
+
+    errflag = sscanf(data + position, "point: %lg %n", point, &second_position);
+    if (!errflag)
+    {
+        printf("Error in input file. Point is not found.\n");
+        return false;
+    }
+    position += second_position;
+
+    errflag = sscanf(data + position, "count: %d %n", count, &second_position);
+    if (!errflag)
+    {
+        printf("Error in input file. Count is not found.\n");
+        return false;
+    }
+    position += second_position;
+
+    errflag = sscanf(data + position, "width: %d %n", width, &second_position);
+    if (!errflag)
+    {
+        printf("Error in input file. Width is not found.\n");
+        return false;
+    }
+    position += second_position;
+
+    errflag = sscanf(data + position, "height: %d %n", height, &second_position);
+    if (!errflag)
+    {
+        printf("Error in input file. Height is not found.\n");
+        return false;
+    }
+    position += second_position;
+
+    return true;
+}
+
+void AnalyseFunction(FILE *input)//TODO: width from file
+{
+    int file_size = getFileSize(input);
+    if (file_size == 0) 
+    {
+        printf("Error opening input file.\n");
+        return;
+    }
+
+    char *data = (char *)calloc(file_size, sizeof(char));
+    fread(data, sizeof(char), file_size, input);
+
+    const int MAX_FUNC_NAME_LEN      = 100;
+    char function[MAX_FUNC_NAME_LEN] = "";
+    double point   = 0;
+    int count      = 0;
+    int width      = 0;
+    int height     = 0;
+    stack_id stk   = {};
+
+    if (GetFuncForAnalyze(data, function, &point, &count, &width, &height))
+    {
+        FILE *texfile = initLatex();
+
+        StackCtor(&stk);
+
+        printf("Getting input function...\n\n");
+
+        GetTokens(function, stk);
+        Node *node = GetStarted(stk);
+        treeLatex(node, texfile);
+
+        treeGraphDump(node);
+
+        node = OptimizeExpression(node);
+        treeGraphDump(node);
+
+        printf("Function is ready for analysys\n\n");
+
+        Node *taylor = Taylor(node, "x", point, count, texfile);
+        Node *tangent = Add(FuncValue(copyNode(node), "x", point), Mul(FuncValue(Diff(node, "x"), "x", point), Sub(CreateVar("x"), CreateNum(point))));
+
+        FILE *gnuplotfile = OpenGnuPlotFile(width, height);
+        AddToGnuplotFile(gnuplotfile, node, "", width, "f(x)");
+        AddToGnuplotFile(gnuplotfile, taylor, "lt 4", width, "P(x)");
+        AddToGnuplotFile(gnuplotfile, tangent, "", width, "tangent");
+        CreatePlot(gnuplotfile, texfile);
+        
+        
+        printf("Analysis finished.\n\n");
+
+        treeDtor(node);
+        treeDtor(taylor);
+        StackDtor(&stk);
+
+        closeLatex(texfile);
+    }
+    free(data);
 }
 
 //----------------------------------------------------------------------------------------------------------------
@@ -298,32 +439,14 @@ static Node *CalculateNumbers(Node *node, bool *was_changed)
 
     node->left  = CalculateNumbers(node->left,  &wasLeftChanged );
     node->right = CalculateNumbers(node->right, &wasRightChanged);
-
+    
     if (node->type == OP)
     {
         if (node->left != nullptr && node->right != nullptr)
         {
             if (node->left->type == NUM && node->right->type == NUM)
             {
-                wasCurChanged = true;
-
-                const double MIN_VALUE = 0.2;
-                
-                if (node->data.op != DIV || fabs(node->left->data.value / node->right->data.value) > MIN_VALUE)
-                {
-                    CalculateBinaryOperations(node);
-                }
-                else //if (op == DIV && fabs(left.val / right.val) < MIN) 
-                {
-                    node->right->data.value /= node->left->data.value;
-                    node->left->data.value = 1;
-
-                    if (node->right->data.value < -MIN_VALUE)
-                    {
-                        node->right->data.value *= -1;
-                        node->left->data.value  *= -1;
-                    }
-                }
+                node = CalculateBinaryOperations(node, &wasCurChanged);
             }
         }
     }
@@ -331,13 +454,11 @@ static Node *CalculateNumbers(Node *node, bool *was_changed)
     {
         printf("Error type: %d\n", node->type);
     }
-    
-    *was_changed = wasLeftChanged || wasRightChanged || wasCurChanged;
-
+    *was_changed = wasCurChanged || wasLeftChanged || wasRightChanged;
     return node;
 }
 
-static Node *CalculateBinaryOperations(Node *node)
+static Node *CalculateBinaryOperations(Node *node, bool *was_changed)
 {
     assert(node != nullptr && node->left != nullptr && node->right != nullptr && "Error: Expression tree is wrong!\n");
 
@@ -358,15 +479,9 @@ static Node *CalculateBinaryOperations(Node *node)
         result = first_operand * second_operand;
         break;
     case DIV:
-        if (!isEqualDoubleNumbers(second_operand, 0))
         {
-            result = first_operand / second_operand;
+        return CalculateDivision(node, was_changed);
         }
-        else
-        {
-            printf("Calculate error: division by zero\n");
-        }
-        break;
     case POW:
         result = pow(first_operand, second_operand);
         break;
@@ -383,6 +498,78 @@ static Node *CalculateBinaryOperations(Node *node)
 
     node->left  = nullptr;
     node->right = nullptr;
+
+    *was_changed = true;
+
+    return node;
+}
+
+static Node *CalculateDivision(Node *node, bool *was_changed)
+{
+    if (isEqualDoubleNumbers(node->right->data.value, 0))
+    {
+        printf("Calculate error: Division by zero!\n");
+    }
+    if (isEqualDoubleNumbers(node->left->data.value, 0))
+    {
+        nodeDtor(node->left);
+        nodeDtor(node->right);
+
+        node->left  = nullptr;
+        node->right = nullptr;
+
+        node->type       = NUM;
+        node->data.value = 0;
+
+        *was_changed = true;
+
+        return node;
+    }
+    if (isEqualDoubleNumbers(fabs(node->left->data.value), 1))
+    {
+        return node;
+    }
+    if (fabs(node->left->data.value) - fabs(node->right->data.value) > -MIN_POSITIVE_DOUBLE_VALUE)
+    {
+        double result = node->left->data.value/node->right->data.value;
+        if (isEqualDoubleNumbers(result, (int)result))
+        {
+            node->type       = NUM;
+            node->data.value = result;
+
+            nodeDtor(node->left);
+            nodeDtor(node->right);
+
+            node->left  = nullptr;
+            node->right = nullptr;
+
+            *was_changed = true;
+
+            return node;
+        }
+    }
+    if (fabs(node->right->data.value) - fabs(node->left->data.value) > -MIN_POSITIVE_DOUBLE_VALUE)
+    {
+        double result = node->right->data.value/node->left->data.value;
+        if (isEqualDoubleNumbers(result, (int)result) && !isEqualDoubleNumbers(node->left->data.value, 1))
+        {
+            node->left->type = NUM;
+            node->left->data.value = 1;
+
+            node->right->type = NUM;
+            node->right->data.value = result;
+
+            if (result < -MIN_POSITIVE_DOUBLE_VALUE)
+            {
+                node->left->data.value  *= -1;
+                node->right->data.value *= -1;
+            }
+
+            *was_changed = true;
+
+            return node;
+        }
+    }
 
     return node;
 }
@@ -441,12 +628,12 @@ static Node *DeleteSumSubUslessNode(Node *node, bool *was_changed)
     return node;
 }
 
-static Node *DeleteMulDivUslessNode(Node *node, bool *was_changed)
+static Node *DeleteMulDivUslessNode(Node *node, bool *was_changed)//TODO: DSL
 {
     assert(node != nullptr && node->left != nullptr && node->right != nullptr && "Error: Expression tree is wrong!\n");
-
-    if (node->left->type  == NUM && node->left->data.value  == 0 || 
-       (node->right->type == NUM && node->right->data.value == 0 && node->data.op == MUL))
+    
+    if (node->left->type  == NUM && isEqualDoubleNumbers(node->left->data.value, 0) || 
+       (node->right->type == NUM && isEqualDoubleNumbers(node->right->data.value, 0) && node->data.op == MUL))
     {
         node->type       = NUM;
         node->data.value = 0;
@@ -457,17 +644,17 @@ static Node *DeleteMulDivUslessNode(Node *node, bool *was_changed)
         node->right = nullptr;
         *was_changed = true;
     }
-    else if (node->right->type == NUM && node->right->data.value == 1)
+    else if (node->right->type == NUM && isEqualDoubleNumbers(node->right->data.value, 1))
     {
         node = SetLeftNodeToThis(node);
         *was_changed = true;
     }
-    else if (node->left->type  == NUM && node->left->data.value  == 1 && node->data.op == MUL)
+    else if (node->left->type  == NUM && isEqualDoubleNumbers(node->left->data.value, 1) && node->data.op == MUL)
     {
         node = SetRightNodeToThis(node);
         *was_changed = true;
     }
-    else if (node->right->type == NUM && node->right->data.value == 0 && node->data.op == MUL)
+    else if (node->right->type == NUM && isEqualDoubleNumbers(node->right->data.value, 0) && node->data.op == MUL)
     {
         printf("Calculate error! Division by zero!\n");
     }
@@ -481,7 +668,9 @@ static Node *DeleteFuncUslessNode(Node *node, bool *was_changed)
 
     if (node->type != OP) {return node;}
 
-    if (node->data.op == SIN && node->right->type == NUM && node->right->data.value == 0)
+    Operations op = node->data.op;
+
+    if ((op == TAN || op == ARCTAN || op == SIN) && node->right->type == NUM && node->right->data.value == 0)
     {
         nodeDtor(node->right);
 
@@ -491,7 +680,7 @@ static Node *DeleteFuncUslessNode(Node *node, bool *was_changed)
         node->right      = nullptr;
         *was_changed     = true;
     }
-    else if (node->data.op == COS && node->right->type == NUM && node->right->data.value == 0)
+    else if ((op == COT || op == COS) && node->right->type == NUM && node->right->data.value == 0)
     {
         nodeDtor(node->right);
 
@@ -501,17 +690,30 @@ static Node *DeleteFuncUslessNode(Node *node, bool *was_changed)
         node->right      = nullptr;
         *was_changed     = true;
     }
-    else if (node->data.op == LN && node->right->type == VAR && strcmp(node->right->data.var, "e") == 0)
+    else if (op == LN)
     {
-        nodeDtor(node->right);
+        if (node->right->type == VAR && strcmp(node->right->data.var, "e") == 0)
+        {
+            nodeDtor(node->right);
 
-        node->type       = NUM;
-        node->data.value = 1;
-        node->left       = nullptr;
-        node->right      = nullptr;
-        *was_changed     = true;
+            node->type       = NUM;
+            node->data.value = 1;
+            node->left       = nullptr;
+            node->right      = nullptr;
+            *was_changed     = true;
+        }
+        else if (node->right->type == NUM && node->right->data.value == 1)
+        {
+            nodeDtor(node->right);
+
+            node->type       = NUM;
+            node->data.value = 0;
+            node->left       = nullptr;
+            node->right      = nullptr;
+            *was_changed     = true;
+        }
     }
-    else if (node->data.op == POW)
+    else if (op == POW)
     {
         if (node->left->type == NUM && (node->left->data.value == 0 || node->left->data.value == 1))
         {
@@ -545,7 +747,7 @@ static Node *DeleteFuncUslessNode(Node *node, bool *was_changed)
             }
         }
     }
-    else if (node->data.op == SQRT && node->right->type == NUM)
+    else if (op == SQRT && node->right->type == NUM)
     {
         if (isEqualDoubleNumbers((int)sqrt(node->right->data.value), sqrt(node->right->data.value)))
         {
@@ -598,6 +800,29 @@ static Node *SetLeftNodeToThis(Node *node)
 static Node *SetRightNodeToThis(Node *node)
 {
     return SetChildNodeToThis(node, false);
+}
+
+static bool isConstant(Node *node, const char *var)
+{
+    if (node == nullptr) {return true;}
+
+    bool isThisConstant = !(node->type == VAR && strcmp(var, node->data.var) == 0);
+
+    return isThisConstant && isConstant(node->left, var) && isConstant(node->right, var);
+}
+
+static void Set_o_add(char *o_add, double point, int power)
+{
+    if (isEqualDoubleNumbers(power, 0)) 
+        sprintf(o_add, "+o(1)");
+    else if (isEqualDoubleNumbers(point, 0) && isEqualDoubleNumbers(power, 1)) 
+        sprintf(o_add, "+o(x)");
+    else if (isEqualDoubleNumbers(power, 1))
+        sprintf(o_add, "+o(x-%lg)", point);
+    else if (isEqualDoubleNumbers(point, 0))
+        sprintf(o_add, "+o(x^{%d})", power);
+    else 
+        sprintf(o_add, "+o((x-%lg)^{%d})", point, power);
 }
 
 //----------------------------------------------------------------------------------------------------------------
